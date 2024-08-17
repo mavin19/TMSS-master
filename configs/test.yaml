@@ -30,4 +30,4 @@ seed: 786
 name: "default"
 
 # passing checkpoint path is necessary
-ckpt_path: "/home/koung/TMSS/tmss_miccai-master/logs/experiments/runs/default/2024-08-10_23-23-14/checkpoints/last.ckpt"
+ckpt_path: "/home/koung/TMSS/tmss_miccai-master/logs/experiments/runs/default/2024-08-17_00-48-49/checkpoints/epoch_003.ckpt"

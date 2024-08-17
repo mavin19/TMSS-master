@@ -55,6 +55,7 @@ class DEEP_MTLR(LightningModule):
         # it also allows to access params with 'self.hparams' attribute
         self.save_hyperparameters()
         self.validation_step_outputs = []
+        self.test_step_outputs = []
 
         if self.hparams['model'] == 'UNETR':
             self.model = UNETR( hparams = self.hparams,
@@ -199,19 +200,23 @@ class DEEP_MTLR(LightningModule):
     def test_step(self, batch: Any, batch_idx: int):
         
         loss, preds, y, labels, pred_mask, target_mask = self.step(batch)
-        return {"loss": loss, "preds": preds, "y": y, "labels": labels, "pred_mask": pred_mask, "target_mask": target_mask}
+
+        self.test_step_outputs.append({"loss": loss, "preds": preds, "y": y, "labels": labels, "pred_mask": pred_mask, "target_mask": target_mask})
+        # return {"loss": loss, "preds": preds, "y": y, "labels": labels, "pred_mask": pred_mask, "target_mask": target_mask}
 
 
 
-    def on_test_epoch_end(self, outputs: List[Any]):
+    def on_test_epoch_end(self):
+        outputs = self.test_step_outputs
         loss        = torch.stack([x["loss"] for x in outputs]).mean()
         pred_prob   = torch.cat([x["preds"] for x in outputs]).cpu() 
         y           = torch.cat([x["y"] for x in outputs]).cpu()
         pred_mask   = torch.cat([x["pred_mask"] for x in outputs])
         target_mask   = torch.cat([x["target_mask"] for x in outputs])
-
         true_time   = torch.cat([x["labels"]["time"] for x in outputs]).cpu()
         true_event  = torch.cat([x["labels"]["event"] for x in outputs]).cpu()
+        pred_risk = mtlr_risk(pred_prob).detach().numpy()  
+        ci_event  = concordance_index(true_time, -pred_risk, event_observed=true_event)
 
 
         pred_risk = mtlr_risk(pred_prob).detach().numpy()  
@@ -239,8 +244,8 @@ class DEEP_MTLR(LightningModule):
         results.to_csv('Predictions.csv')
         
 
-
-        return {"loss": loss, "CI": ci_event}
+        self.test_step_outputs.clear()
+        # return {"loss": loss, "CI": ci_event}
    
 
     def configure_optimizers(self):

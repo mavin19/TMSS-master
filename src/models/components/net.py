@@ -17,7 +17,7 @@ from einops import repeat, rearrange
 import sys
 
 #Number of clin_var
-n_clin_var = 12
+n_clin_var = 512
 
 
 def flatten_layers(arr):
@@ -489,7 +489,8 @@ class PatchEmbeddingBlock(nn.Module):
 
         if self.pos_embed == "conv":
             x = x.flatten(2).transpose(-1, -2)
-            
+        
+        # print(f"Datashape {clin_var.shape} {x.shape}")
         x = torch.cat([clin_var, x], dim=1)
 
         embeddings = x + self.position_embeddings

@@ -20,6 +20,9 @@ from sklearn.preprocessing import scale
 
 from torchmtlr.utils import make_time_bins, encode_survival
 
+#
+import clip
+
 
 def find_centroid(mask: sitk.Image):
 
@@ -54,6 +57,9 @@ def get_paths_to_patient_files(path_to_imgs, PatientID, append_mask=True):
             paths.append((path_to_ct))
     return paths
 
+
+
+
 class HecktorDataset(Dataset):
 
     def __init__(self,
@@ -66,7 +72,7 @@ class HecktorDataset(Dataset):
                  num_workers: int = 1
     ):
         print(cache_dir)
-        self.num_of_seqs = 2 #CT PT
+        self.num_of_seqs = 2 #CT PT        
         
         self.root_directory = root_directory
         self.patch_size = patch_size
@@ -77,6 +83,7 @@ class HecktorDataset(Dataset):
         self.clinical_data = self.make_data(clinical_data_path)
         self.cache_path = get_paths_to_patient_files(cache_dir, self.clinical_data['name'])
         self.clinical_data = self.remove_non_existing_dataset(self.clinical_data, self.cache_path)
+        self.clinical_data_embedded = self.embedd_clinical_data_with_clip(self.clinical_data)
         
         self.time_bins = make_time_bins(times=self.clinical_data["time"], num_bins=time_bins, event = self.clinical_data["event"])
         self.y = encode_survival(self.clinical_data["time"].values, self.clinical_data["event"].values, self.time_bins) # single event
@@ -95,8 +102,31 @@ class HecktorDataset(Dataset):
         indexes_to_drop_index = list(map(lambda name: list(names).index(name), names_to_drop))
         clinical_data = clinical_data.drop(indexes_to_drop_index)
         
-        print(f"CLINICAL_DATA SHAPE {clinical_data.shape}")
         return clinical_data
+    
+
+    def embedd_clinical_data_with_clip(self,  clinical_data):
+        device = "cpu"
+        # device = "cuda" if torch.cuda.is_available() else "cpu"
+        clip_embedding, _ = clip.load('ViT-B/32', device)
+
+        descriptions = []
+        clinical_data = clinical_data.drop(['name','time', 'event'], axis=1)
+
+        column_names = clinical_data.columns
+        
+        for index, row in clinical_data.iterrows():
+            row_description = []
+            for column_name in column_names:
+                value = row[column_name]
+                row_description.append(f"{value}")
+            
+            print(f"row_description length {len(row_description)}")
+            descriptions.append(" ".join(row_description))
+
+        # print("CLINIC_DATA ", descriptions)
+        with torch.no_grad():
+            return clip_embedding.encode_text(clip.tokenize(descriptions, truncate=True).to(device))
 
     def make_data(self, path):
 
@@ -161,11 +191,8 @@ class HecktorDataset(Dataset):
         #                                         "Stage_group",])
         columns_to_fill = ['Age', 'TL']
         clinical_data[columns_to_fill] = clinical_data[columns_to_fill].fillna(clinical_data[columns_to_fill].mean())
-        print(f"clinical_data {len(clinical_data.columns)}")
-        
+
         return clinical_data
-
-
     
 
     def _prepare_data(self):
@@ -229,8 +256,12 @@ class HecktorDataset(Dataset):
         except:   # test data
             clin_var_data = self.clinical_data.drop(['name'], axis=1)
 
-        clin_var = clin_var_data.iloc[idx].to_numpy(dtype='float32')
-        
+
+        # clin_var = clin_var_data.iloc[idx].to_numpy(dtype='float32')
+        # Use clip
+        clin_var = self.clinical_data_embedded[idx]
+        # clin_var = torch.rand([512])
+
         target = self.y[idx]
         
         labels = self.clinical_data.iloc[idx].to_dict()
@@ -263,6 +294,7 @@ class HecktorDataset(Dataset):
         
         if self.transforms:
             sample = self.transforms(sample)
+
     
         return (sample, clin_var), target, labels
     
